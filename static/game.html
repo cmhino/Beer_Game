@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Beer Game CISLOG</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<!-- ══════════════ LOADING ══════════════════════════════════════════════════ -->
+<div id="screen-loading">
+  <div class="spinner"></div>
+  <span style="color:var(--text-muted)">Conectando ao servidor...</span>
+</div>
+
+<!-- ══════════════ LOBBY ════════════════════════════════════════════════════ -->
+<div id="screen-lobby" class="hidden" style="max-width:680px;margin:0 auto;padding:24px 20px">
+  <div class="lobby-header">
+    <div>
+      <div style="font-size:13px;color:var(--text-muted)">Código da sala</div>
+      <div class="room-code-big" id="lobby-room-code">BG-XXXX</div>
+    </div>
+    <div style="flex:1"></div>
+    <button class="btn btn-secondary btn-theme" onclick="toggleTheme()">🌙</button>
+  </div>
+  <div class="share-row">
+    <input type="text" id="share-url" readonly>
+    <button class="btn btn-secondary" onclick="copyLink()">📋 Copiar link</button>
+  </div>
+  <div class="card" style="margin-bottom:16px">
+    <h2>Jogadores na sala</h2>
+    <table class="players-table">
+      <thead><tr><th>Elo</th><th>Jogador</th><th>Tipo</th></tr></thead>
+      <tbody id="lobby-tbody"></tbody>
+    </table>
+  </div>
+  <div class="lobby-actions">
+    <button id="btn-start" class="btn btn-primary hidden" onclick="iniciarJogo()">▶ Iniciar Jogo</button>
+    <span class="lobby-hint">Papéis vazios serão preenchidos pela IA</span>
+  </div>
+</div>
+
+<!-- ══════════════ JOGO — HEADER ════════════════════════════════════════════ -->
+<header id="game-header" class="hidden">
+  <div class="gh-brand">🍺 Beer Game</div>
+  <div class="gh-center">
+    <span class="gh-semana" id="hdr-semana">Semana — / —</span>
+    <span class="gh-papel"  id="hdr-papel">—</span>
+  </div>
+  <div class="gh-right">
+    <span class="gh-room" id="hdr-room">—</span>
+    <span id="hdr-conn" class="conn-online">●</span>
+    <button class="btn-theme" onclick="toggleTheme()">🌙</button>
+  </div>
+</header>
+
+<!-- ══════════════ JOGO — JOGADOR ════════════════════════════════════════════ -->
+<div id="screen-game" class="hidden">
+  <section class="metrics-grid" style="margin-top:16px">
+    <div class="metric-card" id="mc-estoque">
+      <div class="metric-label">Estoque</div>
+      <div class="metric-value" id="mv-estoque">–</div>
+      <div class="metric-sub">unidades</div>
+    </div>
+    <div class="metric-card" id="mc-backlog">
+      <div class="metric-label">Backlog</div>
+      <div class="metric-value" id="mv-backlog">–</div>
+      <div class="metric-sub">pendentes</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Pedido recebido</div>
+      <div class="metric-value" id="mv-pedido-rec">–</div>
+      <div class="metric-sub">do cliente</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Enviado</div>
+      <div class="metric-value" id="mv-enviado">–</div>
+      <div class="metric-sub">ao cliente</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Custo semana</div>
+      <div class="metric-value" id="mv-custo">–</div>
+      <div class="metric-sub" style="font-size:10px">R$/semana</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Custo acumulado</div>
+      <div class="metric-value" id="mv-custo-acum">–</div>
+      <div class="metric-sub" style="font-size:10px">R$ total</div>
+    </div>
+  </section>
+
+  <!-- PIPELINE: dois fluxos bidirecionais bem separados -->
+  <section class="pipeline-section">
+    <div class="pipeline-title">Pipeline de abastecimento — visão do elo</div>
+
+    <!-- Fluxo A: bens (fornecedor → elo → cliente) -->
+    <div class="pipe-flow-label pipe-flow-bens">
+      ← Bens &nbsp;(fornecedor → estoque → cliente)
+    </div>
+    <div class="pipeline-row" style="margin-bottom:10px">
+      <div class="pipe-end-label">FORN.</div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-node" id="pn-transito">
+        <div class="pipe-node-label">Em trânsito</div>
+        <div class="pipe-node-value" id="pv-bens-transito">–</div>
+        <div class="pipe-node-sub">vindo do forn. (2 slots)</div>
+      </div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-node estoque">
+        <div class="pipe-node-label">Estoque</div>
+        <div class="pipe-node-value" id="pv-bens-estoque">–</div>
+        <div class="pipe-node-sub">disponível</div>
+      </div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-node">
+        <div class="pipe-node-label">Enviado</div>
+        <div class="pipe-node-value" id="pv-bens-enviado">–</div>
+        <div class="pipe-node-sub">ao cliente</div>
+      </div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-end-label">CLI.</div>
+    </div>
+
+    <!-- Fluxo B: pedidos (cliente → elo → fornecedor) -->
+    <div class="pipe-flow-label pipe-flow-pedidos">
+      → Pedidos (cliente → decisão → fornecedor)
+    </div>
+    <div class="pipeline-row">
+      <div class="pipe-end-label">CLI.</div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-node">
+        <div class="pipe-node-label">Demanda recebida</div>
+        <div class="pipe-node-value" id="pv-ped-recebido">–</div>
+        <div class="pipe-node-sub">do cliente</div>
+      </div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-node pipe-node-decisao">
+        <div class="pipe-node-label">Sua decisão</div>
+        <div class="pipe-node-value">?</div>
+        <div class="pipe-node-sub">a confirmar agora</div>
+      </div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-node">
+        <div class="pipe-node-label">Pedidos pendentes</div>
+        <div class="pipe-node-value" id="pv-ped-pendentes">–</div>
+        <div class="pipe-node-sub">no forn. (slot anterior)</div>
+      </div>
+      <div class="pipe-arrow">→</div>
+      <div class="pipe-end-label">FORN.</div>
+    </div>
+  </section>
+
+  <!-- DECISÃO -->
+  <section class="decision-section" id="panel-decisao">
+    <div class="decision-title">📦 Seu pedido — Semana <span id="dec-semana">–</span></div>
+    <div class="decision-input-row">
+      <button class="btn-qty" onclick="adj(-5)">−5</button>
+      <button class="btn-qty" onclick="adj(-1)">−</button>
+      <input type="number" id="input-pedido" min="0" max="999" value="4">
+      <button class="btn-qty" onclick="adj(1)">+</button>
+      <button class="btn-qty" onclick="adj(5)">+5</button>
+    </div>
+    <div class="sugestao-ia" id="sugestao-txt"></div>
+    <button id="btn-confirmar" class="btn btn-confirm" onclick="confirmarPedido()">✓ Confirmar pedido</button>
+  </section>
+
+  <!-- AGUARDANDO -->
+  <section class="waiting-section hidden" id="panel-aguardando">
+    <div class="waiting-title">⏳ Aguardando outros jogadores...</div>
+    <div class="waiting-players" id="waiting-list"></div>
+    <button class="btn btn-secondary" id="btn-ia-decide" onclick="iaDecide()">⚡ IA decide pelos ausentes</button>
+  </section>
+
+  <!-- CHART -->
+  <section class="chart-section">
+    <div class="chart-title">Histórico — Estoque e Backlog</div>
+    <div style="position:relative;height:180px">
+      <canvas id="chart-hist" role="img" aria-label="Histórico de estoque e backlog"></canvas>
+    </div>
+  </section>
+
+  <!-- JOGADORES -->
+  <section class="players-status-section">
+    <div class="players-status-title">Jogadores na sala</div>
+    <div class="players-status-list" id="players-list"></div>
+  </section>
+</div>
+
+<!-- ══════════════ OBSERVADOR ════════════════════════════════════════════════ -->
+<div id="screen-obs" class="hidden">
+  <div style="max-width:960px;margin:0 auto;padding:0 16px 40px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <h2 style="font-size:18px;color:var(--brown-mid)">
+        👁 Visão geral — Semana <span id="obs-semana">–</span> / <span id="obs-total">–</span>
+      </h2>
+      <span style="font-size:13px;color:var(--text-muted)">Observador</span>
+    </div>
+
+    <!-- 4 mini-cards dos elos -->
+    <div id="obs-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-bottom:16px"></div>
+
+    <!-- Gráfico comparativo -->
+    <section class="chart-section" style="margin-bottom:14px">
+      <div class="chart-title">Estoque por elo</div>
+      <div style="position:relative;height:200px">
+        <canvas id="obs-chart-est" role="img" aria-label="Estoque comparativo por elo"></canvas>
+      </div>
+    </section>
+    <section class="chart-section">
+      <div class="chart-title">Pedidos por elo — Efeito Bullwhip</div>
+      <div style="position:relative;height:200px">
+        <canvas id="obs-chart-ped" role="img" aria-label="Pedidos por elo"></canvas>
+      </div>
+    </section>
+
+    <!-- Controles do host -->
+    <div style="display:flex;gap:10px;margin-top:16px" id="host-controls">
+      <button class="btn btn-secondary" onclick="iaDecide()">⚡ IA decide pelos ausentes</button>
+      <button class="btn btn-danger"    onclick="terminarJogo()">⏹ Terminar simulação</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ RELATÓRIO FINAL ══════════════════════════════════════════ -->
+<div id="screen-report" class="hidden">
+  <div style="max-width:900px;margin:0 auto;padding:24px 20px 48px">
+
+    <div class="report-header">
+      <h2>🏆 Relatório Final — Beer Game CISLOG</h2>
+      <p class="sub" id="rpt-sub">Sala — · — semanas</p>
+    </div>
+
+    <!-- PÓDIO -->
+    <div class="card" style="margin-bottom:20px">
+      <h2 style="margin-bottom:14px">🥇 Ranking — Menor custo acumulado vence</h2>
+      <div id="rpt-podio" style="display:flex;gap:12px;flex-wrap:wrap"></div>
+    </div>
+
+    <!-- TABELA DETALHADA -->
+    <div class="card" style="margin-bottom:20px;overflow-x:auto">
+      <h2 style="margin-bottom:14px">Estatísticas por elo</h2>
+      <table class="report-table" id="rpt-table">
+        <thead><tr>
+          <th>#</th><th>Elo</th><th>Jogador</th>
+          <th>Custo total</th><th>Est. médio</th><th>Backlog total</th>
+          <th>Pedido máx.</th>
+        </tr></thead>
+        <tbody id="rpt-tbody"></tbody>
+        <tfoot id="rpt-tfoot"></tfoot>
+      </table>
+    </div>
+
+    <!-- CHART ESTOQUE -->
+    <div class="chart-section" style="margin-bottom:20px">
+      <div class="chart-title">Estoque ao longo do tempo</div>
+      <div style="position:relative;height:220px">
+        <canvas id="rpt-chart-est" role="img" aria-label="Estoque por elo"></canvas>
+      </div>
+    </div>
+
+    <!-- CHART PEDIDOS (BULLWHIP) -->
+    <div class="chart-section" style="margin-bottom:20px">
+      <div class="chart-title">Pedidos por elo — Efeito Bullwhip</div>
+      <div style="position:relative;height:220px">
+        <canvas id="rpt-chart-bull" role="img" aria-label="Pedidos por elo"></canvas>
+      </div>
+    </div>
+
+    <!-- CHART CUSTO ACUMULADO -->
+    <div class="chart-section" style="margin-bottom:20px">
+      <div class="chart-title">Custo acumulado por elo</div>
+      <div style="position:relative;height:220px">
+        <canvas id="rpt-chart-custo" role="img" aria-label="Custo acumulado"></canvas>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;justify-content:center">
+      <button class="btn btn-primary" onclick="window.location.href='/'">🔄 Nova partida</button>
+      <button class="btn btn-secondary" onclick="exportarRelatorio()">📥 Exportar JSON</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

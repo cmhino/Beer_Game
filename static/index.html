@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Beer Game CISLOG</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div id="screen-index">
+  <div class="brand">
+    <h1>🍺 Beer Game CISLOG</h1>
+    <p class="subtitle">Simulação de cadeia de suprimentos — versão web</p>
+  </div>
+
+  <!-- ── CRIAR SALA ── -->
+  <div class="card">
+    <h2>➕ Criar nova sala</h2>
+
+    <div class="form-group">
+      <label>Seu nome</label>
+      <input type="text" id="c-nome" placeholder="Ex: Prof. Celso" maxlength="30" autocomplete="off">
+    </div>
+
+    <div class="form-group">
+      <label>Seu papel no jogo</label>
+      <select id="c-papel">
+        <option value="observador">Observador / Professor (sem jogar)</option>
+        <option value="varejista">Varejista</option>
+        <option value="atacadista">Atacadista</option>
+        <option value="distribuidor">Distribuidor</option>
+        <option value="fabrica">Fábrica</option>
+      </select>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>Semanas</label>
+        <select id="c-semanas">
+          <option value="26">26 semanas</option>
+          <option value="36" selected>36 semanas (padrão)</option>
+          <option value="50">50 semanas</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Estoque inicial</label>
+        <select id="c-estoque">
+          <option value="12" selected>12 unidades (clássico)</option>
+          <option value="16">16 unidades</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Modelo de IA (para papéis sem humano)</label>
+      <select id="c-ai">
+        <option value="equilibrado">Pedido Equilibrado (heurística Sterman)</option>
+        <option value="enxuto">Reposição Enxuta (APIOBPCS)</option>
+        <option value="cauteloso">Cauteloso (anti-bullwhip)</option>
+      </select>
+    </div>
+
+    <button class="btn btn-primary" style="width:100%" onclick="criarSala()">
+      🚀 Criar sala e entrar
+    </button>
+    <div id="c-erro" class="error-msg hidden"></div>
+  </div>
+
+  <div class="divider">ou</div>
+
+  <!-- ── ENTRAR EM SALA ── -->
+  <div class="card">
+    <h2>🔗 Entrar em sala existente</h2>
+
+    <div class="form-group">
+      <label>Seu nome</label>
+      <input type="text" id="e-nome" placeholder="Ex: Aluno 1" maxlength="30" autocomplete="off">
+    </div>
+
+    <div class="form-group">
+      <label>Código da sala</label>
+      <input type="text" id="e-codigo" placeholder="Ex: BG-A3F7"
+             style="font-family:monospace; font-size:18px; letter-spacing:2px; text-transform:uppercase"
+             maxlength="7" autocomplete="off">
+    </div>
+
+    <div class="form-group">
+      <label>Seu papel</label>
+      <select id="e-papel">
+        <option value="varejista">Varejista</option>
+        <option value="atacadista">Atacadista</option>
+        <option value="distribuidor">Distribuidor</option>
+        <option value="fabrica">Fábrica</option>
+        <option value="observador">Observador</option>
+      </select>
+    </div>
+
+    <button class="btn btn-primary" style="width:100%" onclick="entrarSala()">
+      🎮 Entrar na sala
+    </button>
+    <div id="e-erro" class="error-msg hidden"></div>
+  </div>
+</div>
+
+<script>
+  // Pré-preencher código se vier na URL (?room=BG-XXXX)
+  window.addEventListener('DOMContentLoaded', () => {
+    const p = new URLSearchParams(window.location.search);
+    if (p.get('room')) document.getElementById('e-codigo').value = p.get('room');
+    if (p.get('nome')) {
+      document.getElementById('c-nome').value = p.get('nome');
+      document.getElementById('e-nome').value = p.get('nome');
+    }
+  });
+
+  async function criarSala() {
+    const nome   = document.getElementById('c-nome').value.trim();
+    const papel  = document.getElementById('c-papel').value;
+    const semanas= parseInt(document.getElementById('c-semanas').value);
+    const estoque= parseInt(document.getElementById('c-estoque').value);
+    const ai     = document.getElementById('c-ai').value;
+    const erroEl = document.getElementById('c-erro');
+
+    if (!nome) { mostrarErro(erroEl, 'Digite seu nome.'); return; }
+    erroEl.classList.add('hidden');
+
+    try {
+      const res  = await fetch('/api/nova_sala');
+      const data = await res.json();
+      const room_id = data.room_id;
+      const url  = `/game?room=${room_id}&nome=${encodeURIComponent(nome)}&papel=${papel}&criador=1`
+                 + `&semanas=${semanas}&estoque=${estoque}&ai=${ai}`;
+      window.location.href = url;
+    } catch(e) {
+      mostrarErro(erroEl, 'Erro ao criar sala: ' + e.message);
+    }
+  }
+
+  function entrarSala() {
+    const nome   = document.getElementById('e-nome').value.trim();
+    const codigo = document.getElementById('e-codigo').value.trim().toUpperCase();
+    const papel  = document.getElementById('e-papel').value;
+    const erroEl = document.getElementById('e-erro');
+
+    if (!nome)   { mostrarErro(erroEl, 'Digite seu nome.'); return; }
+    if (!codigo) { mostrarErro(erroEl, 'Digite o código da sala.'); return; }
+    erroEl.classList.add('hidden');
+
+    const url = `/game?room=${codigo}&nome=${encodeURIComponent(nome)}&papel=${papel}`;
+    window.location.href = url;
+  }
+
+  function mostrarErro(el, msg) {
+    el.textContent = msg;
+    el.classList.remove('hidden');
+  }
+</script>
+</body>
+</html>

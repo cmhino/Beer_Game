@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Beer Game — Painel do Professor</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    body { max-width: 1100px; margin: 0 auto; padding: 24px 20px; }
+    .page-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 28px;
+    }
+    .page-header h1 { font-size: 22px; color: var(--brown-dark); }
+    .badge-sem {
+      display: inline-block; padding: 3px 10px; border-radius: 99px;
+      font-size: 12px; font-weight: 600;
+    }
+    .badge-ativo    { background: var(--green-bg);     color: var(--green); }
+    .badge-encerrado{ background: var(--amber-faint);  color: var(--text-muted); }
+    .badge-lobby    { background: var(--amber-warn-bg); color: var(--amber-warn); }
+
+    .rooms-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 16px;
+    }
+    .room-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 18px 20px;
+      position: relative;
+    }
+    .room-card.finalizado { opacity: .65; }
+    .room-card-header {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 14px;
+    }
+    .room-code-sm {
+      font-family: monospace; font-size: 20px; font-weight: 700;
+      color: var(--amber); letter-spacing: 1px;
+    }
+    .progress-bar-wrap {
+      background: var(--border); border-radius: 99px; height: 6px;
+      margin: 8px 0 14px; overflow: hidden;
+    }
+    .progress-bar-fill {
+      height: 100%; background: var(--amber); border-radius: 99px;
+      transition: width .4s;
+    }
+    .players-mini {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+    }
+    .player-mini-row {
+      display: flex; align-items: center; gap: 6px; font-size: 13px;
+    }
+    .dot-green  { width:8px;height:8px;border-radius:50%;background:var(--green);flex-shrink:0; }
+    .dot-gray   { width:8px;height:8px;border-radius:50%;background:var(--border);flex-shrink:0; }
+    .room-actions { display: flex; gap: 8px; margin-top: 14px; }
+    .btn-obs {
+      flex: 1; padding: 8px; border-radius: var(--radius-sm);
+      background: var(--amber); color: #fff; border: none;
+      font-size: 13px; font-weight: 500; cursor: pointer; text-align: center;
+      text-decoration: none;
+    }
+    .btn-obs:hover { background: var(--brown-mid); }
+    .btn-obs-sec {
+      flex: 1; padding: 8px; border-radius: var(--radius-sm);
+      background: transparent; color: var(--text);
+      border: 1px solid var(--border); font-size: 13px;
+      cursor: pointer; text-align: center; text-decoration: none;
+    }
+    .btn-obs-sec:hover { background: var(--amber-faint); }
+
+    .empty-state {
+      text-align: center; padding: 60px 20px;
+      color: var(--text-muted);
+    }
+    .empty-state .emoji { font-size: 48px; margin-bottom: 12px; }
+    .refresh-bar {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 13px; color: var(--text-muted);
+    }
+    .refresh-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--green); animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0%,100% { opacity:1; } 50% { opacity:.3; }
+    }
+    .stats-bar {
+      display: flex; gap: 20px; margin-bottom: 24px;
+      padding: 14px 20px;
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+    .stat-item { text-align: center; }
+    .stat-val  { font-size: 24px; font-weight: 700; color: var(--amber); }
+    .stat-lbl  { font-size: 11px; color: var(--text-muted); text-transform: uppercase; }
+  </style>
+</head>
+<body>
+
+<div class="page-header">
+  <div>
+    <h1>🍺 Beer Game CISLOG — Painel do Professor</h1>
+    <div class="refresh-bar">
+      <div class="refresh-dot" id="refresh-dot"></div>
+      <span id="refresh-txt">Atualizando...</span>
+    </div>
+  </div>
+  <div style="display:flex;gap:10px;align-items:center">
+    <button class="btn btn-secondary" onclick="toggleTheme()">🌙</button>
+    <a href="/" class="btn btn-primary" style="text-decoration:none">➕ Nova sala</a>
+  </div>
+</div>
+
+<!-- RESUMO -->
+<div class="stats-bar" id="stats-bar">
+  <div class="stat-item">
+    <div class="stat-val" id="st-total">–</div>
+    <div class="stat-lbl">Salas abertas</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-val" id="st-ativas">–</div>
+    <div class="stat-lbl">Em andamento</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-val" id="st-lobby">–</div>
+    <div class="stat-lbl">No lobby</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-val" id="st-enc">–</div>
+    <div class="stat-lbl">Encerradas</div>
+  </div>
+</div>
+
+<!-- GRID DE SALAS -->
+<div class="rooms-grid" id="rooms-grid">
+  <div class="empty-state">
+    <div class="emoji">🔄</div>
+    <div>Carregando salas...</div>
+  </div>
+</div>
+
+<script>
+if (localStorage.getItem("theme") === "dark") {
+  document.documentElement.setAttribute("data-theme","dark");
+}
+
+const NOME_PAPEL = {
+  varejista:"Varejista",atacadista:"Atacadista",
+  distribuidor:"Distribuidor",fabrica:"Fábrica"
+};
+const CORES = {
+  varejista:"#D4882E",atacadista:"#2A7D4F",
+  distribuidor:"#185FA5",fabrica:"#C4392C"
+};
+
+async function carregar() {
+  document.getElementById("refresh-dot").style.animation = "pulse 0.5s infinite";
+  try {
+    const res   = await fetch("/api/rooms");
+    const salas = await res.json();
+
+    // Stats
+    const total  = salas.length;
+    const ativas = salas.filter(s => s.iniciado && !s.finalizado).length;
+    const lobby  = salas.filter(s => !s.iniciado).length;
+    const enc    = salas.filter(s => s.finalizado).length;
+    setText("st-total",  total);
+    setText("st-ativas", ativas);
+    setText("st-lobby",  lobby);
+    setText("st-enc",    enc);
+
+    const grid = document.getElementById("rooms-grid");
+    if (salas.length === 0) {
+      grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1">
+        <div class="emoji">🍺</div>
+        <div style="font-size:16px;font-weight:500;margin-bottom:8px">Nenhuma sala aberta</div>
+        <div>Clique em "Nova sala" para criar a primeira partida</div>
+      </div>`;
+      return;
+    }
+
+    grid.innerHTML = salas.map(s => {
+      const pct = s.total_semanas > 0
+        ? Math.round(s.semana / s.total_semanas * 100) : 0;
+      const statusLabel = s.finalizado ? "Encerrada"
+        : s.iniciado ? `Sem. ${s.semana}/${s.total_semanas}`
+        : "No lobby";
+      const statusCls = s.finalizado ? "badge-encerrado"
+        : s.iniciado ? "badge-ativo" : "badge-lobby";
+
+      const playersHtml = ["varejista","atacadista","distribuidor","fabrica"].map(p => {
+        const jog = s.jogadores[p] || {};
+        const online = jog.online === true;
+        return `<div class="player-mini-row">
+          <div class="${online?'dot-green':'dot-gray'}"></div>
+          <span style="color:${CORES[p]};font-size:11px;font-weight:600">${NOME_PAPEL[p][0]}</span>
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100px">
+            ${jog.nome||'(IA)'}
+          </span>
+        </div>`;
+      }).join("");
+
+      const obsUrl  = `/game?room=${s.room_id}&nome=Professor&papel=observador`;
+      const playUrl = `/game?room=${s.room_id}&nome=Professor&papel=varejista`;
+
+      return `<div class="room-card${s.finalizado?' finalizado':''}">
+        <div class="room-card-header">
+          <span class="room-code-sm">${s.room_id}</span>
+          <span class="badge-sem ${statusCls}">${statusLabel}</span>
+          ${s.observadores > 0 ? `<span style="font-size:11px;color:var(--text-muted)">👁 ${s.observadores}</span>` : ''}
+        </div>
+        ${s.iniciado && !s.finalizado ? `
+        <div class="progress-bar-wrap">
+          <div class="progress-bar-fill" style="width:${pct}%"></div>
+        </div>` : ''}
+        <div class="players-mini">${playersHtml}</div>
+        ${!s.finalizado ? `<div class="room-actions">
+          <a class="btn-obs" href="${obsUrl}">👁 Observar</a>
+          ${!s.iniciado ? `<a class="btn-obs-sec" href="${playUrl}">🎮 Entrar</a>` : ''}
+        </div>` : `<div style="margin-top:10px;font-size:12px;color:var(--text-muted)">
+          Jogo encerrado — relatório disponível
+        </div>`}
+      </div>`;
+    }).join("");
+
+    setText("refresh-txt",
+      "Atualizado às " + new Date().toLocaleTimeString("pt-BR"));
+  } catch(e) {
+    setText("refresh-txt", "Erro ao carregar — " + e.message);
+  } finally {
+    document.getElementById("refresh-dot").style.animation = "pulse 1.5s infinite";
+  }
+}
+
+function setText(id, v) {
+  const e = document.getElementById(id);
+  if (e) e.textContent = v;
+}
+
+function toggleTheme() {
+  const cur = document.documentElement.getAttribute("data-theme");
+  const next = cur === "dark" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", next);
+  localStorage.setItem("theme", next);
+}
+
+// Auto-refresh a cada 5 segundos
+carregar();
+setInterval(carregar, 5000);
+</script>
+</body>
+</html>
